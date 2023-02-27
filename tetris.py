@@ -6,6 +6,7 @@ import pygame #version 1.9.3
 import random
 import math
 import sys
+from copy import copy
 
 pygame.init()
 pygame.font.init()
@@ -103,6 +104,7 @@ class GameKeyInput:
 		self.restart = self.KeyName('idle',False) # 'pressed' //KEY R
 		self.hold = self.KeyName('idle',False) # 'pressed' //KEY CTRL
 
+
 	
 	class KeyName:
 	
@@ -120,7 +122,7 @@ class GameClock:
 		self.move = self.TimingType(MOVE_PERIOD_INIT) #Drop and move(right and left) timing object
 		self.fall = self.TimingType(levelSpeeds[STARTING_LEVEL]) #Free fall timing object
 		self.clearAniStart = 0
-	
+
 	class TimingType:
 		
 		def __init__(self,framePeriod):
@@ -164,7 +166,9 @@ class MainBoard:
 		self.boardLineWidth = boardLineWidth
 		self.blockLineWidth = blockLineWidth
 		self.scoreBoardWidth = scoreBoardWidth
-		self.heldAlready = False
+		#check if hold option has been used
+		self.heldThisPiece = False
+		self.heldYet = False
 		
 		#Matrix that contains all the existing blocks in the game board, except the moving piece
 		self.blockMat = [['empty'] * colNum for i in range(rowNum)]
@@ -195,6 +199,8 @@ class MainBoard:
 		self.generateNextTwoPieces()
 		self.gameStatus = 'running'
 		self.gamePause = False
+		self.heldYet = False
+		self.heldThisPiece = False
 		
 		self.score = 0
 		self.level = STARTING_LEVEL
@@ -273,16 +279,20 @@ class MainBoard:
 			blocks = [[0,0],[0,0],[0,0],[0,0]]
 			origin = [0,0]
 			# Held Piece for UI Containers 27/02/23 CW 2
-			self.blocksH = [[0,0],[0,0],[0,0],[0,0]]
-			self.originH = [0,0]
+			blocksH = [[0,0],[0,0],[0,0],[0,0]]
+			originH = [0,0]
 			for i in range(0,4):
 				blocks[i][ROW] = origin[ROW] + pieceDefs[self.nextPieces[1]][i][ROW]
 				blocks[i][COL] = origin[COL] + pieceDefs[self.nextPieces[1]][i][COL]
-				#Building Held Piece for UI 27/02/2023 CW 4
-				if self.heldPiece != 'empty':
-					self.blocksH[i][ROW] = self.originH[ROW] + pieceDefs[self.heldPiece][i][ROW]
-					self.blocksH[i][COL] = self.originH[COL] + pieceDefs[self.heldPiece][i][COL]
-					self.draw_BLOCK(xPosRef-15*self.blockSize,yPosRef+2.25*self.blockSize,self.blocksH[i][ROW],self.blocksH[i][COL],blockColors[self.heldPiece])
+				if self.heldYet:
+					blocksH[i][ROW] = originH[ROW] + pieceDefs[self.heldPiece.type][i][ROW]
+					blocksH[i][COL] = originH[COL] + pieceDefs[self.heldPiece.type][i][COL]
+					if self.heldPiece.type == 'O':
+						self.draw_BLOCK(xPosRef-15.5*self.blockSize,yPosRef+2.25*self.blockSize,blocksH[i][ROW],blocksH[i][COL],blockColors[self.heldPiece.type])
+					elif self.heldPiece.type == 'I':
+						self.draw_BLOCK(xPosRef-15.5*self.blockSize,yPosRef+1.65*self.blockSize,blocksH[i][ROW],blocksH[i][COL],blockColors[self.heldPiece.type])
+					else:
+						self.draw_BLOCK(xPosRef-15*self.blockSize,yPosRef+2.25*self.blockSize,blocksH[i][ROW],blocksH[i][COL],blockColors[self.heldPiece.type])
 				if self.nextPieces[1] == 'O':
 					self.draw_BLOCK(xPosRef+0.5*self.blockSize,yPosRef+2.25*self.blockSize,blocks[i][ROW],blocks[i][COL],blockColors[self.nextPieces[1]])
 				elif self.nextPieces[1] == 'I':
@@ -480,20 +490,17 @@ class MainBoard:
 							self.piece.rotate('cCW')
 							key.cRotate.trig = False
 
-						if key.hold.trig == True:
-							if self.heldPiece == 'empty':
-								self.heldPiece = self.piece.type
-								self.generateNextPiece()
-								self.heldAlready = False
-								self.piece.colNum = self.colNum
-								self.piece.rowNum = self.rowNum
-
-							elif self.heldAlready == False:
-								self.heldPiece, self.piece.type = self.piece.type, self.heldPiece
-								self.piece.colNum = self.colNum
-								self.piece.rowNum = self.rowNum
-								self.heldAlready = True
-								self.piece.blocks = self.blocksH
+						if key.hold.trig:
+							if not self.heldYet:
+								self.heldPiece = copy(self.piece)
+								self.prepareNextSpawn()
+								self.piece.spawn()
+								self.heldThisPiece = False
+								self.heldYet = True
+							elif not self.heldThisPiece:
+								self.heldPiece, self.piece = copy(self.piece), copy(self.heldPiece)
+								self.piece.spawn()
+								self.heldThisPiece = True
 							key.hold.trig = False
 					elif self.piece.status == 'collided':			
 						if self.lineClearStatus == 'idle':
@@ -502,7 +509,7 @@ class MainBoard:
 							self.clearedLines = self.getCompleteLines()
 							self.updateScores()
 							self.updateSpeed()
-							self.heldAlready = False
+							self.heldThisPiece = False
 						elif self.lineClearStatus == 'clearRunning':
 							self.lineClearAnimation()
 						else: # 'clearFin'
@@ -532,7 +539,6 @@ class MovingPiece:
 		self.blocks = []
 		for i in range(0,4):
 			self.blocks.append(MovingBlock())
-		
 		self.currentDef = [[0] * 2 for i in range(4)]
 		self.status = status # 'uncreated' 'moving' 'collided'
 		self.type = 'I' # 'O', 'T', 'S', 'Z', 'J', 'L'
