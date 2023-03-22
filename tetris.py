@@ -6,8 +6,10 @@ import pygame #version 1.9.3
 import random
 import math
 import sys
+import numpy as np
 from copy import copy
-
+import torch
+import torch.nn as nn
 pygame.init()
 pygame.font.init()
 
@@ -169,6 +171,7 @@ class MainBoard:
 		#check if hold option has been used
 		self.heldThisPiece = False
 		self.heldYet = False
+		self.last9Moves = [0,0,0,0,0,0,0,0,0]
 		
 		#Matrix that contains all the existing blocks in the game board, except the moving piece
 		self.blockMat = [['empty'] * colNum for i in range(rowNum)]
@@ -187,6 +190,7 @@ class MainBoard:
 		self.score = 0
 		self.level = STARTING_LEVEL
 		self.lines = 0
+		self.lastScore = 0
 	
 	def restart(self):
 		self.blockMat = [['empty'] * self.colNum for i in range(self.rowNum)]
@@ -440,12 +444,14 @@ class MainBoard:
 				clearedLinesNum = clearedLinesNum + 1
 				
 		self.score = self.score + (self.level+1)*baseLinePoints[clearedLinesNum] + self.piece.dropScore
+		self.lastScore = (self.level+1)*baseLinePoints[clearedLinesNum] + self.piece.dropScore
 		if self.score > 999999:
 			self.score = 999999
 		self.lines = self.lines + clearedLinesNum
 		self.level = STARTING_LEVEL + math.floor(self.lines/10)
 		if self.level > 99:
 			self.level = 99
+
 	
 	def updateSpeed(self):
 	
@@ -502,12 +508,14 @@ class MainBoard:
 								self.piece.spawn()
 								self.heldThisPiece = True
 							key.hold.trig = False
-					elif self.piece.status == 'collided':			
+					elif self.piece.status == 'collided':
+						self.last9Moves[0:7] = self.last9Moves[1:8]
 						if self.lineClearStatus == 'idle':
 							for i in range(0,4):
 								self.blockMat[self.piece.blocks[i].currentPos.row][self.piece.blocks[i].currentPos.col] = self.piece.type
 							self.clearedLines = self.getCompleteLines()
 							self.updateScores()
+							self.last9Moves[8] = self.lastScore
 							self.updateSpeed()
 							self.heldThisPiece = False
 						elif self.lineClearStatus == 'clearRunning':
@@ -515,6 +523,7 @@ class MainBoard:
 						else: # 'clearFin'
 							self.dropFreeBlocks()					
 							self.prepareNextSpawn()
+							self.last9Moves[8] = 0
 			
 			else: # self.gamePause = False
 				if key.pause.trig == True:
@@ -754,7 +763,6 @@ class MovingBlock:
 		def __init__(self,row,col):
 			self.row = row
 			self.col = col	
-		
 
 # Main game loop		
 def gameLoop():		
@@ -767,12 +775,33 @@ def gameLoop():
 	scoreBoardWidth = blockSize * (boardColNum//2)
 	boardPosX = DISPLAY_WIDTH*0.3
 	boardPosY = DISPLAY_HEIGHT*0.15
+	previousHighAvgnorm = 0
 
 	mainBoard = MainBoard(blockSize,boardPosX,boardPosY,boardColNum,boardRowNum,boardLineWidth,blockLineWidth,scoreBoardWidth)	
-	
+	countI = 0
 	xChange = 0
-	
+	blocksDropped = 0
+	costInterval = 0
+	yPredStack = torch.zeros((5))
+	yMoveStack = torch.zeros((5))
 	gameExit = False
+	torch.autograd.set_detect_anomaly(True)
+	epoch = 0
+
+	# Neural Net Setup
+	nIn, nH1, nH2, nH3, nOut = 400, 275, 160, 50, 6
+	model = nn.Sequential(nn.Linear(nIn, nH1),
+						  nn.ReLU(),
+						  nn.Linear(nH1, nH2),
+						  nn.ReLU(),
+						  nn.Linear(nH2, nH3),
+						  nn.Sigmoid(),
+						  nn.Linear(nH3,nOut),
+						  nn.ReLU())
+	model[0]
+	criterion2 = torch.nn.MSELoss()
+	criterion1 = torch.nn.CrossEntropyLoss()
+	optimiser = torch.optim.SGD(model.parameters(), lr=0.1)
 
 	while not gameExit: #Stay in this loop unless the game is quit
 		
@@ -834,7 +863,84 @@ def gameLoop():
 				key.xNav.status = 'left'	
 			else:
 				key.xNav.status = 'idle'
-		
+		#Neural Net Loop
+		if(mainBoard.piece.status == 'uncreated'): #whenever a new piece is created
+			blocksDropped = blocksDropped + 1 #blocks dropped count increased
+			nnBlockMat = torch.zeros((np.size(mainBoard.blockMat)))
+			for i in range(0,len(mainBoard.blockMat)): #creating a board using nnBlockMat
+				for j in range(0, len(mainBoard.blockMat[i])):
+					if(mainBoard.blockMat[i][j] == 'empty'):
+						nnBlockMat[i*10+j] = 0
+					else:
+						nnBlockMat[i*10+j] = 1
+		currentPieceMat = torch.zeros((np.size(mainBoard.blockMat)))
+		for i in range (0,len(mainBoard.piece.blocks)):
+			currentPieceMat[(mainBoard.piece.blocks[i].currentPos.col)+(mainBoard.piece.blocks[i].currentPos.row)*10] = 1
+		currentAvg = 0
+		for i in range(1, 9):
+			currentAvg = currentAvg + mainBoard.last9Moves[i]
+
+		currentAvg = currentAvg / 10 + 1
+		if mainBoard.level == 0:
+			targAvg = torch.as_tensor([(1 * 1200 + 216) / 10])
+		else:
+			targAvg = torch.as_tensor([(mainBoard.level * 1200 + 216)/10])
+		currentAvgnorm = torch.as_tensor((currentAvg - 0) / (targAvg - 0))
+		nnFullMat = torch.cat((currentPieceMat,nnBlockMat))
+		yPred = model(nnFullMat)
+		biggestNum = 0.5
+		yCurr = 6
+		for i in range(0,6):
+			if yPred[i] > biggestNum:
+				yCurr = i
+				biggestNum = yPred[i]
+		if yCurr == 0: #up (rotate)
+			key.rotate.trig = True
+			key.rotate.status = 'pressed'
+		elif yCurr == 1: #down
+			key.down.status = 'pressed'
+		elif yCurr == 2:  # Left
+			xChange += -1
+		elif yCurr == 3:  # Right
+			xChange += 1
+		elif yCurr == 4:  # z (cRotate)
+			key.cRotate.trig = True
+			key.cRotate.status = 'pressed'
+		elif yCurr == 5:  # lctrl (hold)
+			key.hold.status = 'pressed'
+			key.hold.trig = True
+		if mainBoard.gameStatus == 'gameOver':
+			key.enter.status = 'pressed'
+		# yPred1 = copy(yPred)
+		# yPredManipulated = yPred1[0:5]
+		# for i in range(0,len(yPredManipulated)):
+		# 	if yPredManipulated[i] == max(yPredManipulated):
+		# 		yPredManipulated[i] = 1
+		# 	else:
+		# 		yPredManipulated[i] = 0
+		# yMoveStack = (yMoveStack+yPredManipulated)/2
+		# yPredStack = (yPredStack + yPred1[0:5])/2
+		costInterval = costInterval + 1
+		while(costInterval > 300):
+
+			costInterval = 0
+			#loss1 = criterion1(yPred, yMoveStack)
+			if currentAvgnorm < 0.5:
+				if currentAvgnorm < 0.01:
+					calculatedLoss = currentAvgnorm
+				elif currentAvgnorm < previousHighAvgnorm:
+					calculatedLoss = currentAvgnorm
+				elif previousHighAvgnorm <= currentAvgnorm:
+					calculatedLoss = currentAvgnorm+0.2
+					previousHighAvgnorm = currentAvgnorm
+			calculatedLoss = 1-calculatedLoss
+			loss2 = criterion2(yPred, calculatedLoss)
+			loss2.data = calculatedLoss
+			optimiser.zero_grad()
+			loss2.backward()
+			optimiser.step()
+			epoch += 1
+			print("Updated Model! (" + str(epoch) + ")" )
 		gameDisplay.fill(BLACK) #Whole screen is painted black in every iteration before any other drawings occur 
 			
 		mainBoard.gameAction() #Apply all the game actions here	
@@ -842,7 +948,7 @@ def gameLoop():
 		gameClock.update() #Increment the frame tick
 		
 		pygame.display.update() #Pygame display update		
-		clock.tick(60) #Pygame clock tick function(60 fps)
+		#clock.tick() #Pygame clock tick function(60 fps)
 
 # Main program
 key = GameKeyInput()		

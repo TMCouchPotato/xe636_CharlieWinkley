@@ -4,22 +4,30 @@ import pygame
 import numpy as np
 import sys
 
-pygame.init()
-pygame.font.init()
+# pygame.init()
+# pygame.font.init()
 
 DISPLAY_WIDTH = 500
 DISPLAY_HEIGHT = 300
 
-gameDisplay = pygame.display.set_mode((DISPLAY_WIDTH,DISPLAY_HEIGHT))
-pygame.display.set_caption('NN Graph')
-clock = pygame.time.Clock()
+# gameDisplay = pygame.display.set_mode((DISPLAY_WIDTH,DISPLAY_HEIGHT))
+# pygame.display.set_caption('NN Graph')
+# clock = pygame.time.Clock()
 #Setting sizes of layers within the structure
-nIn, nH, nOut, batchSize = 10, 5, 1, 10
+nIn, nH, nOut, batchSize = 1, 5, 1, 1
 #Creating a randomised input
 x = torch.randn(batchSize, nIn)
+testMin = 1
+testMax = 40000
+singleX = np.random.randint(1, 40000)
+normalX = torch.as_tensor([[(singleX-testMin)/(testMax-testMin)]])
+print(normalX)
+print(x)
 #creating a target output
 y = torch.tensor([[1.0], [0.0], [0.0],
 [1.0], [1.0], [1.0], [0.0], [0.0], [1.0], [1.0]])
+singleY = np.random.randint(1,40000)
+normalY = torch.as_tensor([[(singleY-testMin)/(testMax-testMin)]])
 #Constructing the model (Linear Activation using nIn input features and nH output features, passed through a ReLU
 #activation function. This is passed through another Linear activation layer with no. input features nH and no. output
 #features nOut, passed through a sigmoid activation function for the output
@@ -32,44 +40,44 @@ criterion = torch.nn.MSELoss()
 #optimiser for updating model based on calculated loss.
 optimiser = torch.optim.SGD(model.parameters(), lr = 0.01)
 print(model._modules['0'].weight)
-print(model._parameters.)
+
 gameExit = False
-def drawTree(model):
-    longestLayer = 0
-    layerCount = 0
-    layerEst = len(model._modules)
-    layerList = []
-    for i in range(layerEst):
-        if hasattr(model._modules[str(i)], "weight"):
-            if len(model._modules[str(i)].weight)>longestLayer:
-                longestLayer = len(model._modules[str(i)].weight)
-                layerList.append(model._modules[str(i)].weight)
-                layerCount=layerCount+1
-    print(longestLayer, "  then ", layerCount)
-    treeMatrix = np.ndarray((longestLayer, layerCount, 2))
-    xPixChange = DISPLAY_WIDTH/(layerCount+1)
-    yPixChange = DISPLAY_HEIGHT/(longestLayer+1)
-    print(treeMatrix)
-    for i in range(layerCount):
-        if len(layerList[i])<longestLayer:
-            for j in range(len(layerList[i])):
-                treeMatrix[i][j] = (xPixChange*(i+1),(DISPLAY_HEIGHT/(len(layerList[i])+1))*(j+1))
-        else:
-            for j in range(len(layerList[i])):
-                treeMatrix[i][j][0] = xPixChange*(i+1)
-                treeMatrix[i][j][1] = (yPixChange * (j + 1))
-    print("Tree Matrix ", treeMatrix)
+# def drawTree(model):
+#     longestLayer = 0
+#     layerCount = 0
+#     layerEst = len(model._modules)
+#     layerList = []
+#     for i in range(layerEst):
+#         if hasattr(model._modules[str(i)], "weight"):
+#             if len(model._modules[str(i)].weight)>longestLayer:
+#                 longestLayer = len(model._modules[str(i)].weight)
+#                 layerList.append(model._modules[str(i)].weight)
+#                 layerCount=layerCount+1
+#     print(longestLayer, "  then ", layerCount)
+#     treeMatrix = np.ndarray((longestLayer, layerCount, 2))
+#     xPixChange = DISPLAY_WIDTH/(layerCount+1)
+#     yPixChange = DISPLAY_HEIGHT/(longestLayer+1)
+#     print(treeMatrix)
+#     for i in range(layerCount):
+#         if len(layerList[i])<longestLayer:
+#             for j in range(len(layerList[i])):
+#                 treeMatrix[i][j] = (xPixChange*(i+1),(DISPLAY_HEIGHT/(len(layerList[i])+1))*(j+1))
+#         else:
+#             for j in range(len(layerList[i])):
+#                 treeMatrix[i][j][0] = xPixChange*(i+1)
+#                 treeMatrix[i][j][1] = (yPixChange * (j + 1))
+#     print("Tree Matrix ", treeMatrix)#
 while not gameExit:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:  # Looks for quitting event in every iteration (Meaning closing the game window)
-            gameExit = True
+    # for event in pygame.event.get():
+    #     if event.type == pygame.QUIT:  # Looks for quitting event in every iteration (Meaning closing the game window)
+    #         gameExit = True
     x = torch.randn(batchSize, nIn)
     # model training loop
-    for epoch in range(50):
+    for epoch in range(500):
         # apply the model to the given input
-        yPred = model(x)
+        yPred = model(normalX)
         # apply the loss function to the predicted values given the resulting values, returning in the loss values.
-        loss = criterion(yPred, y)
+        loss = criterion(yPred, normalY)
         # print the iteration and average loss
         print('epoch: ', epoch, ' loss: ', loss.item())
         # reset the optimiser gradients
@@ -78,6 +86,11 @@ while not gameExit:
         loss.backward()
         # make a step based on the calculated gradients
         optimiser.step()
-    pygame.display.update()  # Pygame display update
-    drawTree(model)
-    clock.tick(5)
+    # pygame.display.update()  # Pygame display update
+    # drawTree(model)
+    # clock.tick(5)
+
+
+#Score notes
+#18 points/1 drop/ 4 blocks bottom layer: 54pts, * 4: 216pts
+#1200pts*lvl + 216 = target avg over 10 moves
