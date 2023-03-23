@@ -1,6 +1,7 @@
 #Tetris Game, written in Python 3.6.5
 #Version: 1.0
 #Date: 26.05.2018
+import time
 
 import pygame #version 1.9.3
 import random
@@ -84,7 +85,7 @@ directions = {
 'downLeft' : (1,-1),
 'noMove' : (0,0) }
 
-levelSpeeds = (48,43,38,33,28,23,18,13,8,6,5,5,5,4,4,4,3,3,3,2,2,2,2,2,2,2,2,2,2)
+levelSpeeds = (1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1)
 #The speed of the moving piece at each level. Level speeds are defined as levelSpeeds[level]
 #Each 10 cleared lines means a level up.
 #After level 29, speed is always 1. Max level is 99
@@ -121,7 +122,7 @@ class GameClock:
 	def __init__(self):
 		self.frameTick = 0 #The main clock tick of the game, increments at each frame (1/60 secs, 60 fps)
 		self.pausedMoment = 0
-		self.move = self.TimingType(MOVE_PERIOD_INIT) #Drop and move(right and left) timing object
+		self.move = self.TimingType(1) #Drop and move(right and left) timing object
 		self.fall = self.TimingType(levelSpeeds[STARTING_LEVEL]) #Free fall timing object
 		self.clearAniStart = 0
 
@@ -146,7 +147,7 @@ class GameClock:
 	def restart(self):
 		self.frameTick = 0
 		self.pausedMoment = 0
-		self.move = self.TimingType(MOVE_PERIOD_INIT)
+		self.move = self.TimingType(1)
 		self.fall = self.TimingType(levelSpeeds[STARTING_LEVEL])
 		self.clearAniStart = 0
 		
@@ -782,8 +783,7 @@ def gameLoop():
 	xChange = 0
 	blocksDropped = 0
 	costInterval = 0
-	yPredStack = torch.zeros((5))
-	yMoveStack = torch.zeros((5))
+	yPredStack = torch.zeros(6)
 	gameExit = False
 	torch.autograd.set_detect_anomaly(True)
 	epoch = 0
@@ -797,7 +797,7 @@ def gameLoop():
 						  nn.Linear(nH2, nH3),
 						  nn.Sigmoid(),
 						  nn.Linear(nH3,nOut),
-						  nn.ReLU())
+						  nn.Sigmoid())
 	model[0]
 	criterion2 = torch.nn.MSELoss()
 	criterion1 = torch.nn.CrossEntropyLoss()
@@ -888,30 +888,39 @@ def gameLoop():
 		currentAvgnorm = torch.as_tensor((currentAvg - 0) / (targAvg - 0))
 		nnFullMat = torch.cat((currentPieceMat,nnBlockMat))
 		yPred = model(nnFullMat)
-		biggestNum = 0.5
+		yPred1 = copy(yPred)
+		yPred2 = copy(yPred)
+		biggestNum = 0
 		yCurr = 6
 		for i in range(0,6):
-			if yPred[i] > biggestNum:
+			if yPred1[i] > biggestNum:
 				yCurr = i
 				biggestNum = yPred[i]
 		if yCurr == 0: #up (rotate)
 			key.rotate.trig = True
 			key.rotate.status = 'pressed'
+			yPredStack[yCurr] += 1
 		elif yCurr == 1: #down
 			key.down.status = 'pressed'
+			yPredStack[yCurr] += 1
 		elif yCurr == 2:  # Left
 			xChange += -1
+			yPredStack[yCurr] += 1
 		elif yCurr == 3:  # Right
 			xChange += 1
+			yPredStack[yCurr] += 1
 		elif yCurr == 4:  # z (cRotate)
 			key.cRotate.trig = True
 			key.cRotate.status = 'pressed'
+			yPredStack[yCurr] += 1
 		elif yCurr == 5:  # lctrl (hold)
 			key.hold.status = 'pressed'
 			key.hold.trig = True
+			yPredStack[yCurr] += 1
+		else:
+			yPredStack[0:6] += 1
 		if mainBoard.gameStatus == 'gameOver':
 			key.enter.status = 'pressed'
-		# yPred1 = copy(yPred)
 		# yPredManipulated = yPred1[0:5]
 		# for i in range(0,len(yPredManipulated)):
 		# 	if yPredManipulated[i] == max(yPredManipulated):
@@ -919,10 +928,9 @@ def gameLoop():
 		# 	else:
 		# 		yPredManipulated[i] = 0
 		# yMoveStack = (yMoveStack+yPredManipulated)/2
-		# yPredStack = (yPredStack + yPred1[0:5])/2
 		costInterval = costInterval + 1
-		while(costInterval > 300):
-
+		while(costInterval > 100):
+			yPredStack = yPredStack/costInterval
 			costInterval = 0
 			#loss1 = criterion1(yPred, yMoveStack)
 			if currentAvgnorm < 0.5:
@@ -933,22 +941,25 @@ def gameLoop():
 				elif previousHighAvgnorm <= currentAvgnorm:
 					calculatedLoss = currentAvgnorm+0.2
 					previousHighAvgnorm = currentAvgnorm
-			calculatedLoss = 1-calculatedLoss
-			loss2 = criterion2(yPred, calculatedLoss)
-			loss2.data = calculatedLoss
+			yPredStackInverted = torch.zeros(6)
+			for i in range (0,6):
+				yPredStackInverted[i] = 1-yPredStack[i]
+			loss2 = criterion2(yPred,(yPred2*yPredStackInverted+(1-(yPred2*yPredStackInverted+yPredStack)*(1-calculatedLoss))+(yPred2*yPredStack*calculatedLoss)))
+			loss2.data = 1-calculatedLoss
 			optimiser.zero_grad()
 			loss2.backward()
 			optimiser.step()
+			yPredStack = torch.zeros(6)
 			epoch += 1
 			print("Updated Model! (" + str(epoch) + ")" )
-		gameDisplay.fill(BLACK) #Whole screen is painted black in every iteration before any other drawings occur 
-			
+		gameDisplay.fill(BLACK) #Whole screen is painted black in every iteration before any other drawings occur
 		mainBoard.gameAction() #Apply all the game actions here	
 		mainBoard.draw() #Draw the new board after game the new game actions
 		gameClock.update() #Increment the frame tick
-		
+		toc = time.time()
 		pygame.display.update() #Pygame display update		
-		#clock.tick() #Pygame clock tick function(60 fps)
+		clock.tick()
+
 
 # Main program
 key = GameKeyInput()		
