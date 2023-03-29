@@ -15,6 +15,7 @@ DISPLAY_HEIGHT = 300
 # clock = pygame.time.Clock()
 #Setting sizes of layers within the structure
 nIn, nH, nOut, batchSize = 1, 5, 1, 1
+
 #Creating a randomised input
 x = torch.randn(batchSize, nIn)
 testMin = 1
