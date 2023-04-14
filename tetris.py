@@ -795,20 +795,20 @@ def gameLoop():
 	visitCounts = [0,0,0,0,0,0]
 	countR = 0
 	# Neural Net Setup
-	nIn, nH1, nH2, nH3, nOut = 400 , 64, 36, 18, 7
+	nIn, nH1, nH2, nH3, nOut = 400 , 50, 50, 50, 36
 	model = nn.Sequential(#nn.Linear(nIn, nH1),
 						  #nn.ReLU(),
 						  nn.Linear(nIn, nH2),
-						  nn.ReLU(inplace=False),
+						  nn.ReLU(),
 						  nn.Linear(nH2, nH3),
 						  nn.Sigmoid(),
 						  nn.Linear(nH3,nOut),
-						  nn.ReLU(inplace=False))
+						  nn.ReLU())
 	model[0]
 	criterion1 = torch.nn.MSELoss()
 	criterion2 = torch.nn.CrossEntropyLoss()
-	voptimiser = torch.optim.SGD(model.parameters(), lr=lrnR)
-	poptimiser = torch.optim.SGD(model.parameters(), lr=lrnR)
+	optimiser = torch.optim.SGD(model.parameters(), lr=lrnR)
+
 
 	while not gameExit: #Stay in this loop unless the game is quit
 		
@@ -871,198 +871,165 @@ def gameLoop():
 			else:
 				key.xNav.status = 'idle'
 		#Neural Net Loop
-		if waitForRestart != True:
-			if(mainBoard.gameStatus == 'firstStart' or 'gameOver'):
-				key.enter.status = 'pressed'
-			if(mainBoard.piece.status == 'uncreated' and mainBoard.gameStatus != 'gameOver'): #whenever a new piece is created reconstruct s
-				blocksDropped = blocksDropped + 1 #blocks dropped count increased
-				nnBlockMat = torch.zeros((np.size(mainBoard.blockMat))) #container for nnblockmat
-				for i in range(0,len(mainBoard.blockMat)): #creating a board using nnBlockMat
-					for j in range(0, len(mainBoard.blockMat[i])):
-						if(mainBoard.blockMat[i][j] == 'empty'):
-							nnBlockMat[i*10+j] = 0
-						else:
-							nnBlockMat[i*10+j] = 1
-			if (mainBoard.gameStatus != 'gameOver'):
-				currentPieceMat = torch.zeros((np.size(mainBoard.blockMat)))
-				for i in range (0,len(mainBoard.piece.blocks)):
-					currentPieceMat[(mainBoard.piece.blocks[i].currentPos.col)+(mainBoard.piece.blocks[i].currentPos.row)*10] = 1
-				nnFullMat = torch.cat((currentPieceMat,nnBlockMat))
-				yPredraw = model(nnFullMat)
-			if simming == False and mainBoard.gameStatus == 'running':
-				yPred = yPredraw
-				yP = yPred[0:6].clone()
-				yV = yPred[6].clone()
-				softMax = torch.nn.Softmax(dim=0)
-				yPsoft = softMax(yP)
-				simming = True
-
-				randNum = torch.rand(1)
-				index = -1
-				while randNum > 0:
-					index += 1
-					randNum -= yPsoft[index]
-				pickedMove = index
-				currentS = 0
-				firstSim = True
-				probabilityStack = torch.zeros(6)
-				posSimmed = 0
-				simResults = 'empty'
-				if copiesBool == True:
-					yVBatch = yV.clone()
-					yPBatch = yPsoft.clone()
-					copiesBool = False
-				elif firstShape == True:
-					yVBatch = torch.cat((yVBatch.reshape(1), yV.reshape(1)))
-					yPBatch = torch.cat((yPBatch, yPsoft))
-					firstShape = False
-				else:
-					yVBatch = torch.cat((yVBatch, yV.reshape(1)))
-					yPBatch = torch.cat((yPBatch, yPsoft))
-			elif simming == True and mainBoard.gameStatus == 'running': #If currently simming
-				if firstSim == True: #do nothing on first run as it is original position only reset values
-					firstSim = False
-					pickedMove = 0
-					mainBoardCopy = copy.deepcopy(mainBoard)
-					basePositions = []
-					basePositions.append(copy.deepcopy(mainBoard))
-				else:					#on subsequent runs execute following
-					simPred = yPredraw.clone()#run model on simulated position
-					simPred = softMax(simPred[0:6].clone())
-					if simResults == 'empty':
-						simResults = simPred.clone()
+		if(mainBoard.gameStatus == 'firstStart' or mainBoard.gameStatus == 'gameOver'):
+			key.enter.status = 'pressed'
+		if(mainBoard.piece.status == 'uncreated' and mainBoard.gameStatus != 'gameOver'): #whenever a new piece is created reconstruct s
+			blocksDropped = blocksDropped + 1 #blocks dropped count increased
+			nnBlockMat = torch.zeros((np.size(mainBoard.blockMat))) #container for nnblockmat
+			for i in range(0,len(mainBoard.blockMat)): #creating a board using nnBlockMat
+				for j in range(0, len(mainBoard.blockMat[i])):
+					if(mainBoard.blockMat[i][j] == 'empty'):
+						nnBlockMat[i*10+j] = 0
 					else:
-						simResults = torch.cat((simResults, simPred.clone()))
+						nnBlockMat[i*10+j] = 1
+		if (mainBoard.gameStatus != 'gameOver'):
+			currentPieceMat = torch.zeros((np.size(mainBoard.blockMat)))
+			for i in range (0,len(mainBoard.piece.blocks)):
+				currentPieceMat[(mainBoard.piece.blocks[i].currentPos.col)+(mainBoard.piece.blocks[i].currentPos.row)*10] = 1
+			nnFullMat = torch.cat((currentPieceMat,nnBlockMat))
+			yPredraw = model(nnFullMat)
 
-					basePositions.append(copy.deepcopy(mainBoard))
-					# basePositions = torch.cat((basePositions,mainBoard.blockMat)
-					# piecePositions = torch.cat((piecePositions, mainBoard.piece.blocks))
-					if pickedMove == 6:
-						pickedMove = 0
-						currentS += 1
-						mainBoard = copy.deepcopy(basePositions[currentS])
-					else:
-						mainBoard = copy.deepcopy(basePositions[currentS])
-				if posSimmed > 43:
-					simming = False
-					currentS = 0
-					mainBoard = copy.deepcopy(mainBoardCopy)
-					posSimmed = 0
-					testCount = 0
-					for i in range(0,len(simResults)):
-						if i == 0:
-							probabilityStack[0] += simResults[i].clone()
-						elif (i+1)%7 == 0:
-							testCount += 1
-						elif (i+1)%6 == 0:
-							probabilityStack[5] += simResults[i].clone()
-						elif (i+1)%5 == 0:
-							probabilityStack[4] += simResults[i].clone()
-						elif (i+1)%4 == 0:
-							probabilityStack[3] += simResults[i].clone()
-						elif (i+1)%3 == 0:
-							probabilityStack[2] += simResults[i].clone()
-						elif (i+1)%2 == 0:
-							probabilityStack[1] += simResults[i].clone()
-						else:
-							probabilityStack[0] += simResults[i].clone()
-						posSimmed = 0
-					for i in range(0,6):
-						probabilityStack[i] /= testCount
-					if scndcpiesBool == True:
-						probabilityBatch = probabilityStack.clone()
-						scndcpiesBool = False
-					else:
-						probabilityBatch = torch.cat((probabilityBatch, probabilityStack.clone()))
-				else:
-					posSimmed += 1
-			if mainBoard.gameStatus == 'running':
-				if pickedMove == 0: #up (rotate)
-					key.rotate.trig = True
-					key.rotate.status = 'pressed'
-					pickedMove += 1
-					if simming == False:
-						visitCounts[pickedMove] += 1
-				elif pickedMove == 1: #down
-					key.down.status = 'pressed'
-					pickedMove += 1
-					if simming == False:
-						visitCounts[pickedMove] += 1
-				elif pickedMove == 2:  # Left
-					xChange += -1
-					pickedMove += 1
-					if simming == False:
-						visitCounts[pickedMove] += 1
-				elif pickedMove == 3:  # Right
-					xChange += 1
-					pickedMove += 1
-					if simming == False:
-						visitCounts[pickedMove] += 1
-				elif pickedMove == 4:  # z (cRotate)
-					key.cRotate.trig = True
-					key.cRotate.status = 'pressed'
-					pickedMove += 1
-					if simming == False:
-						visitCounts[pickedMove] += 1
-				elif pickedMove == 5:  # lctrl (hold)
-					key.hold.status = 'pressed'
-					key.hold.trig = True
-					pickedMove += 1
-					if simming == False:
-						visitCounts[pickedMove] += 1
-				costInterval = costInterval + 1
-			if(mainBoard.gameStatus == 'gameOver'):
-				#loss1 = criterion1(yVBatch, torch.as_tensor((mainBoard.score/999999)))
-				#loss2 = criterion2(yPBatch, probabilityBatch)
-				yVBatchTemp = yVBatch.clone()
-				value_loss = 0.5 * criterion1(yVBatchTemp, torch.as_tensor((mainBoard.score/999999)).detach())
-				voptimiser.zero_grad()
-				yPBatchshort = yPBatch[0:len(probabilityBatch)]
-				yPBatchTemp = softMax(yPBatchshort.clone())
-				probabilityTemp = softMax(probabilityBatch.clone())
-				probTempSoft = probabilityTemp.clone()
-				action_loss = criterion2(yPBatchTemp, probTempSoft)
 
-				poptimiser.zero_grad()
-				loss = value_loss+action_loss
-				with torch.autograd.detect_anomaly():
-					loss.backward(retain_graph=True)
+		if simming == False and mainBoard.gameStatus == 'running':
+			simming = True
+			firstSim = True
+			firstScore = False
+			scoreMatrix = torch.zeros((36))
+			pieceConfirmed = False
+		if simming == True and mainBoard.gameStatus == 'running' and mainBoard.piece.status == 'moving' : #If currently simming
+			if firstSim == True:
+				mainBoardCopy = copy.deepcopy(mainBoard)
+				pieceNeedsRotate = False
+				leftmost = 100
+				rightmost = -100
+				bottomMost = 0
+				for i in range(0, 4):
+					if (leftmost > mainBoard.piece.blocks[i].currentPos.col):
+						leftmost = mainBoard.piece.blocks[i].currentPos.col
+					if (rightmost < mainBoard.piece.blocks[i].currentPos.col):
+						rightmost = mainBoard.piece.blocks[i].currentPos.col
+					if (bottomMost < mainBoard.piece.blocks[i].currentPos.row):
+						bottomMost = mainBoard.piece.blocks[i].currentPos.row
+				maxLeft, maxRight, maxBottom = leftmost, 9 - rightmost, bottomMost
+				totalMoves = maxLeft + maxRight + 1
+				nncolIndex = 5 - maxLeft
+				heightArray = []
+				for i in range(0,10):
+					height = 0
+					while(mainBoard.blockMat[height][i] == 'empty' and height <19):
+						height += 1
+					heightArray.append(int(height-maxBottom))
+				rotation = 0
+				firstSim = False
+			mainBoard = copy.deepcopy(mainBoardCopy)
+			if(pieceNeedsRotate == True):
+				if firstScore == True:
+					scoreMatrix[rotation*9 + nncolIndex] = mainBoard.lastScore + calculatedScore
+				for i in range(0,rotation):
+					mainBoard.piece.rotate('CW')
+				rotation += 1
+				leftmost = 100
+				rightmost = -100
+				bottomMost = 0
+				for i in range(0,4):
+					if (leftmost > mainBoard.piece.blocks[i].currentPos.col):
+						leftmost = mainBoard.piece.blocks[i].currentPos.col
+					if (rightmost < mainBoard.piece.blocks[i].currentPos.col):
+						rightmost = mainBoard.piece.blocks[i].currentPos.col
+					if (bottomMost < mainBoard.piece.blocks[i].currentPos.row):
+						bottomMost = mainBoard.piece.blocks[i].currentPos.row
+					maxLeft, maxRight, maxBottom = leftmost, 9-rightmost, bottomMost
+				totalMoves = maxLeft+maxRight+1
+				pieceNeedsRotate = False
+				nncolIndex = 5-maxLeft
 
-				voptimiser.step()
-				poptimiser.step()
-				# optimiser.zero_grad()
-				# loss.backward()
-				# optimiser.step()
-				scndcpiesBool = True
-				copiesBool = True
-				firstShape = True
-				if epoch == 500:
-					lrnR = 0.05
-				if epoch == 5000:
-					lrnR = 0.01
-				if epoch == 10000:
-					lrnR = 0.005
-				# if epoch % 25 == 0 or epoch == 0:
-				# 	for param in model.parameters():
-				# 		if param.size() == torch.Size([6]):
-				# 			print(yPred)
-				# 			print(yPredBatch)
-				epoch += 1
-				costInterval = 0
-				print("Updated Model! (" + str(epoch) + ")" )
-				simResults = 'empty'
-				waitForRestart = True
-		countR += 1
-		if countR == 4:
-			waitForRestart = False
+
+			if firstScore == True:
+				scoreMatrix[rotation*9 + nncolIndex] = mainBoard.lastScore + calculatedScore
+			if nncolIndex <= 4+maxRight:
+				for i in range(0,4):
+						calculatedScore = heightArray[nncolIndex]
+						mainBoard.piece.blocks[i].currentPos.row += heightArray[nncolIndex]
+						mainBoard.piece.blocks[i].currentPos.col = mainBoard.piece.blocks[i].currentPos.col-(5-nncolIndex)
+						firstScore = True
+						if nncolIndex == 9-maxRight:
+							pieceNeedsRotate = True
+							if rotation == 3:
+								simming = False
+						pieceConfirmed = False
+				nncolIndex += 1
+			else: #Finding the highest scoring move when sim is finished
+				pickedRot = 0
+				pickedShift = 0
+				for i in range (0,4):
+					for j in range(0,9):
+						if(scoreMatrix[pickedRot*9 + pickedShift] <= scoreMatrix[i*9 + j]):
+							pickedRot = i
+							pickedShift = j
+				simming = False
+
+			while(pieceConfirmed == False):	#Checks if piece is colliding and moves up 1 if it is.
+				pieceConfirmed = True
+				for i in range(0,200):
+					if(nnBlockMat[i] != 0 and currentPieceMat[i] != 0):
+						pieceConfirmed = False
+						for i in range(0,4):
+							mainBoard.piece.blocks[i].currentPos.row -= 1
+
+		if(simming == False and
+				mainBoard.gameStatus == 'running' and
+				mainBoard.piece.status == 'moving'):
+			mainBoard = copy.deepcopy(mainBoardCopy)
+			nnRot = math.floor(torch.argmax(yPredraw)/9)
+			nnShift = torch.argmax(yPredraw) % 9
+			for i in range(0, nnRot):
+				mainBoard.piece.rotate('CW')
+			if (bottomMost < mainBoard.piece.blocks[i].currentPos.row):
+				bottomMost = mainBoard.piece.blocks[i].currentPos.row
+			maxBottom = bottomMost
+			heightArray = []
+			for i in range(0, 10):
+				height = 0
+				while (mainBoard.blockMat[height][i] == 'empty' and height < 19):
+					height += 1
+				heightArray.append(int(height - maxBottom))
+			calculatedScore = heightArray[nnShift]
+			for i in range(0,4):
+				mainBoard.piece.blocks[i].currentPos.row += heightArray[nnShift]
+				mainBoard.piece.blocks[i].currentPos.col = mainBoard.piece.blocks[i].currentPos.col - (5-nnShift)
+			while (pieceConfirmed == False):  # Checks if piece is colliding and moves up 1 if it is.
+				pieceConfirmed = True
+				for i in range(0, 200):
+					if (mainBoard.piece.blockMat[i] != 'empty' and mainBoard.blockMat[i] != 'empty'):
+						pieceConfirmed = False
+						for i in range(0, 4):
+							mainBoard.piece.blocks[i].currentPos.row -= 1
+			loss = criterion1(yPredraw, scoreMatrix)
+			optimiser.zero_grad()
+			with torch.autograd.detect_anomaly():
+				loss.backward(retain_graph=True)
+			optimiser.step()
+			simming = False
+			if epoch == 500:
+				lrnR = 0.05
+			if epoch == 5000:
+				lrnR = 0.01
+			if epoch == 10000:
+				lrnR = 0.005
+			firstSim = True
+			firstScore = False
+			# if epoch % 25 == 0 or epoch == 0:
+			# 	for param in model.parameters():
+			# 		if param.size() == torch.Size([6]):
+			# 			print(yPred)
+			# 			print(yPredBatch)
+			epoch += 1
+			print("Updated Model! (" + str(epoch) + ")" )
 		gameDisplay.fill(BLACK) #Whole screen is painted black in every iteration before any other drawings occur
 		mainBoard.gameAction() #Apply all the game actions here	
 		mainBoard.draw() #Draw the new board after game the new game actions
 		gameClock.update() #Increment the frame tick
-		#if x == 2:
 		pygame.display.update() #Pygame display update
-		#	x = 0
-		#x += 1
 		clock.tick()
 
 
