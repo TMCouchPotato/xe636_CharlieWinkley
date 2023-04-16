@@ -777,7 +777,7 @@ def gameLoop():
 	scoreBoardWidth = blockSize * (boardColNum//2)
 	boardPosX = DISPLAY_WIDTH*0.3
 	boardPosY = DISPLAY_HEIGHT*0.15
-	previousScore = 0
+	savedScore = 0
 	lossMultiplier = 1
 	copiesBool = True
 	mainBoard = MainBoard(blockSize,boardPosX,boardPosY,boardColNum,boardRowNum,boardLineWidth,blockLineWidth,scoreBoardWidth)	
@@ -792,15 +792,15 @@ def gameLoop():
 	calculatedScore = 0
 	epoch = 0
 	# Neural Net Setup
-	nIn, nH1, nH2, nH3, nOut = 207 , 100, 50, 50, 36
+	nIn, nH1, nH2, nH3, nOut = 207 , 207, 150, 50, 40
 	model = nn.Sequential(nn.Linear(nIn, nH1),
 						  nn.Sigmoid(),
+						 # nn.Linear(nH1, nH2),
+						 # nn.ReLU(),
 						  nn.Linear(nH1, nH2),
 						  nn.Sigmoid(),
-						  nn.Linear(nH2, nH3),
-						  nn.ReLU(),
-						  nn.Linear(nH3,nOut),
-						  nn.ReLU())
+						  nn.Linear(nH2,nOut),
+						  nn.LeakyReLU())
 	model[0]
 	criterion1 = torch.nn.MSELoss()
 	criterion2 = torch.nn.CrossEntropyLoss()
@@ -903,7 +903,7 @@ def gameLoop():
 			simming = True
 			firstSim = True
 			firstScore = False
-			scoreMatrix = torch.zeros((36))
+			scoreMatrix = torch.zeros((40))
 			pieceConfirmed = False
 		if simming == True and mainBoard.gameStatus == 'running' and mainBoard.piece.status == 'moving' : #If currently simming
 			if firstSim == True:
@@ -932,6 +932,9 @@ def gameLoop():
 					height = 0
 					while(mainBoard.blockMat[height][i] == 'empty' and height <19):
 						height += 1
+					if height == 0:
+						key.restart.trig = True
+						key.restart.status = 'pressed'
 					heightArray.append(int(height-maxBottom))
 				rotation = 0
 				firstSim = False
@@ -939,9 +942,14 @@ def gameLoop():
 			if(pieceNeedsRotate == True):
 				rotation += 1
 				if firstScore == True:
-					scoreMatrix[(rotation*9 + nncolIndex)-1] = mainBoard.lastScore + calculatedScore
+					scoreMatrix[rotation*10 + nncolIndex] = savedScore + calculatedScore
+					savedScore = 0
 				for i in range(0,rotation):
 					mainBoard.piece.rotate('CW')
+				if (mainBoard.piece.blocks[0].currentPos.col == 5 and mainBoard.piece.blocks[1].currentPos.col == 5 and
+						mainBoard.piece.blocks[2].currentPos.col == 5 and mainBoard.piece.blocks[3].currentPos.col == 5):
+					for i in range(4):
+						mainBoard.piece.blocks[i].currentPos.col -= 1
 				mainBoardUpdated = copy.deepcopy(mainBoard)
 				leftmost = 100
 				rightmost = -100
@@ -967,11 +975,15 @@ def gameLoop():
 					height = 0
 					while (mainBoard.blockMat[height][i] == 'empty' and height < 19):
 						height += 1
+					if height == 0:
+						key.restart.trig = True
+						key.restart.status = 'pressed'
 					heightArray.append(int(height - maxBottom))
 
 
 			if firstScore == True:
-				scoreMatrix[(rotation*9 + nncolIndex)-1] = mainBoard.lastScore + calculatedScore
+				scoreMatrix[(rotation*10 + nncolIndex)-1] = savedScore + calculatedScore
+				savedScore = 0
 			if nncolIndex <= 4+maxRight:
 				for i in range(0,4):
 						mainBoard.piece.blocks[i].currentPos.row += heightArray[nncolIndex]
@@ -988,8 +1000,8 @@ def gameLoop():
 				pickedRot = 0
 				pickedShift = 0
 				for i in range (0,4):
-					for j in range(0,9):
-						if(scoreMatrix[(pickedRot*9 + pickedShift)-1] <= scoreMatrix[i*9 + j]):
+					for j in range(0,10):
+						if(scoreMatrix[(pickedRot*10 + pickedShift)-1] <= scoreMatrix[i*10 + j]):
 							pickedRot = i
 							pickedShift = j
 			scorebottomMost = 0
@@ -1020,14 +1032,18 @@ def gameLoop():
 				mainBoard.gameStatus == 'running' and
 				mainBoard.piece.status == 'moving'):
 			mainBoard = copy.deepcopy(mainBoardCopy)
-			nnRot = math.floor(torch.argmax(yPredraw)/9)
-			nnShift = torch.argmax(yPredraw) % 9
+			nnRot = math.floor(torch.argmax(yPredraw)/10)
+			nnShift = torch.argmax(yPredraw) % 10
 			nnRotCopy = copy.deepcopy(nnRot)
 			for i in range(0, nnRot):
 				mainBoard.piece.rotate('CW')
 			leftmost = 100
 			rightmost = -100
 			bottomMost = 0
+			if (mainBoard.piece.blocks[0].currentPos.col == 5 and mainBoard.piece.blocks[1].currentPos.col == 5 and
+					mainBoard.piece.blocks[2].currentPos.col == 5 and mainBoard.piece.blocks[3].currentPos.col == 5):
+				for i in range(4):
+					mainBoard.piece.blocks[i].currentPos.col -= 1
 			for i in range(0, 4):
 				if (leftmost > mainBoard.piece.blocks[i].currentPos.col):
 					leftmost = mainBoard.piece.blocks[i].currentPos.col
@@ -1047,24 +1063,30 @@ def gameLoop():
 				   mainBoard.piece.blocks[3].currentPos.row != 0):
 				for i in range(0, 4):
 					mainBoard.piece.blocks[i].currentPos.row -= 1
-			if (bottomMost < mainBoard.piece.blocks[i].currentPos.row):
-				bottomMost = mainBoard.piece.blocks[i].currentPos.row
-			maxBottom = bottomMost
+			nnbottomMost = 0
+			for i in range(0,4):
+				if (nnbottomMost < mainBoard.piece.blocks[i].currentPos.row):
+					nnbottomMost = mainBoard.piece.blocks[i].currentPos.row
+			nnmaxBottom = nnbottomMost
 			heightArray = []
 			rotation = 0
-			if(nnShift < leftmost):
-				nnShift = leftmost
-			if(nnShift > rightmost):
-				nnShift = rightmost
+
+			if(nnShift < 4-leftmost):
+				nnShift = 4-leftmost
+			if(nnShift > (9-rightmost)+4):
+				nnShift = (9-rightmost)+4
 			for i in range(0, 10):
 				height = 0
 				while (mainBoard.blockMat[height][i] == 'empty' and height < 19):
 					height += 1
-				heightArray.append(int(height - maxBottom))
+				if height == 0:
+					key.restart.trig = True
+					key.restart.status = 'pressed'
+				heightArray.append(int(height - nnmaxBottom))
 
 			for i in range(0,4):
 				mainBoard.piece.blocks[i].currentPos.row += heightArray[nnShift]
-				mainBoard.piece.blocks[i].currentPos.col -= 5-nnShift
+				mainBoard.piece.blocks[i].currentPos.col -= 4-nnShift
 			while (pieceConfirmed == False):  # Checks if piece is colliding and moves up 1 if it is.
 				pieceConfirmed = True
 				for i in range(0, 4):
@@ -1077,8 +1099,9 @@ def gameLoop():
 					else:
 						i = 4
 						key.enter.status = 'pressed'
-
+			mainBoard.score += scoreMatrix[torch.argmax(yPredraw)]
 			pieceConfirmed = False
+			print(mainBoard.piece.type)
 			print(scoreMatrix)
 			print(yPredraw)
 			loss = criterion1(yPredraw, scoreMatrix)
@@ -1103,6 +1126,10 @@ def gameLoop():
 			# 			print(yPredBatch)
 			epoch += 1
 			print("Updated Model! (" + str(epoch) + ")" )
+		# for i in range(4):
+		# 	mainBoard.piece.blocks[i].nextPos = mainBoard.piece.blocks[i].currentPos
+		if (mainBoard.lastScore != 0):
+			savedScore = mainBoard.lastScore
 		gameDisplay.fill(BLACK) #Whole screen is painted black in every iteration before any other drawings occur
 		mainBoard.gameAction() #Apply all the game actions here	
 		mainBoard.draw() #Draw the new board after game the new game actions
