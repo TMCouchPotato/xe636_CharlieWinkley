@@ -215,21 +215,21 @@ class MainBoard:
 		gameClock.restart()
 		
 	def erase_BLOCK(self,xRef,yRef,row,col):
-		pygame.draw.rect(gameDisplay, BLACK, [xRef+(col*self.blockSize),yRef+(row*self.blockSize),self.blockSize,self.blockSize],0)
+		pygame.draw.rect(gameDisplay, BLACK, (xRef+(col*self.blockSize),yRef+(row*self.blockSize),self.blockSize,self.blockSize),0)
 		
 	def draw_BLOCK(self,xRef,yRef,row,col,color):
-		pygame.draw.rect(gameDisplay, BLACK, [xRef+(col*self.blockSize),yRef+(row*self.blockSize),self.blockSize,self.blockLineWidth],0)
-		pygame.draw.rect(gameDisplay, BLACK, [xRef+(col*self.blockSize)+self.blockSize-self.blockLineWidth,yRef+(row*self.blockSize),self.blockLineWidth,self.blockSize],0)
-		pygame.draw.rect(gameDisplay, BLACK, [xRef+(col*self.blockSize),yRef+(row*self.blockSize),self.blockLineWidth,self.blockSize],0)
-		pygame.draw.rect(gameDisplay, BLACK, [xRef+(col*self.blockSize),yRef+(row*self.blockSize)+self.blockSize-self.blockLineWidth,self.blockSize,self.blockLineWidth],0)
+		pygame.draw.rect(gameDisplay, BLACK, (xRef+(int(col)*self.blockSize),yRef+(row*self.blockSize),self.blockSize,self.blockLineWidth),0)
+		pygame.draw.rect(gameDisplay, BLACK, (xRef+(int(col)*self.blockSize)+self.blockSize-self.blockLineWidth,yRef+(row*self.blockSize),self.blockLineWidth,self.blockSize),0)
+		pygame.draw.rect(gameDisplay, BLACK, (xRef+(int(col)*self.blockSize),yRef+(row*self.blockSize),self.blockLineWidth,self.blockSize),0)
+		pygame.draw.rect(gameDisplay, BLACK, (xRef+(int(col)*self.blockSize),yRef+(row*self.blockSize)+self.blockSize-self.blockLineWidth,self.blockSize,self.blockLineWidth),0)
 
-		pygame.draw.rect(gameDisplay, color, [xRef+(col*self.blockSize)+self.blockLineWidth,yRef+(row*self.blockSize)+self.blockLineWidth,self.blockSize-(2*self.blockLineWidth),self.blockSize-(2*self.blockLineWidth)],0)
+		pygame.draw.rect(gameDisplay, color, (xRef+(int(col)*self.blockSize)+self.blockLineWidth,yRef+(row*self.blockSize)+self.blockLineWidth,self.blockSize-(2*self.blockLineWidth),self.blockSize-(2*self.blockLineWidth)),0)
 	
 	def draw_GAMEBOARD_BORDER(self):
-		pygame.draw.rect(gameDisplay, BORDER_COLOR, [self.xPos-self.boardLineWidth-self.blockLineWidth,self.yPos-self.boardLineWidth-self.blockLineWidth,(self.blockSize*self.colNum)+(2*self.boardLineWidth)+(2*self.blockLineWidth),self.boardLineWidth],0)
-		pygame.draw.rect(gameDisplay, BORDER_COLOR, [self.xPos+(self.blockSize*self.colNum)+self.blockLineWidth,self.yPos-self.boardLineWidth-self.blockLineWidth,self.boardLineWidth,(self.blockSize*self.rowNum)+(2*self.boardLineWidth)+(2*self.blockLineWidth)],0)
-		pygame.draw.rect(gameDisplay, BORDER_COLOR, [self.xPos-self.boardLineWidth-self.blockLineWidth,self.yPos-self.boardLineWidth-self.blockLineWidth,self.boardLineWidth,(self.blockSize*self.rowNum)+(2*self.boardLineWidth)+(2*self.blockLineWidth)],0)
-		pygame.draw.rect(gameDisplay, BORDER_COLOR, [self.xPos-self.boardLineWidth-self.blockLineWidth,self.yPos+(self.blockSize*self.rowNum)+self.blockLineWidth,(self.blockSize*self.colNum)+(2*self.boardLineWidth)+(2*self.blockLineWidth),self.boardLineWidth],0)
+		pygame.draw.rect(gameDisplay, BORDER_COLOR, (self.xPos-self.boardLineWidth-self.blockLineWidth,self.yPos-self.boardLineWidth-self.blockLineWidth,(self.blockSize*self.colNum)+(2*self.boardLineWidth)+(2*self.blockLineWidth),self.boardLineWidth),0)
+		pygame.draw.rect(gameDisplay, BORDER_COLOR, (self.xPos+(self.blockSize*self.colNum)+self.blockLineWidth,self.yPos-self.boardLineWidth-self.blockLineWidth,self.boardLineWidth,(self.blockSize*self.rowNum)+(2*self.boardLineWidth)+(2*self.blockLineWidth)),0)
+		pygame.draw.rect(gameDisplay, BORDER_COLOR, (self.xPos-self.boardLineWidth-self.blockLineWidth,self.yPos-self.boardLineWidth-self.blockLineWidth,self.boardLineWidth,(self.blockSize*self.rowNum)+(2*self.boardLineWidth)+(2*self.blockLineWidth)),0)
+		pygame.draw.rect(gameDisplay, BORDER_COLOR, (self.xPos-self.boardLineWidth-self.blockLineWidth,self.yPos+(self.blockSize*self.rowNum)+self.blockLineWidth,(self.blockSize*self.colNum)+(2*self.boardLineWidth)+(2*self.blockLineWidth),self.boardLineWidth),0)
 	
 	def draw_GAMEBOARD_CONTENT(self):
 	
@@ -784,24 +784,21 @@ def gameLoop():
 	pickedMove = 0
 	xChange = 0
 	blocksDropped = 0
-	costInterval = 0
+	nnRotCopy = 0
 	gameExit = False
 	simming = False
-	scndcpiesBool = True
-	waitForRestart = False
-	epoch = 0
 	firstShape = True
-	lrnR = 0.1
-	visitCounts = [0,0,0,0,0,0]
-	countR = 0
+	lrnR = 0.2
+	calculatedScore = 0
+	epoch = 0
 	# Neural Net Setup
-	nIn, nH1, nH2, nH3, nOut = 400 , 50, 50, 50, 36
-	model = nn.Sequential(#nn.Linear(nIn, nH1),
-						  #nn.ReLU(),
-						  nn.Linear(nIn, nH2),
-						  nn.ReLU(),
-						  nn.Linear(nH2, nH3),
+	nIn, nH1, nH2, nH3, nOut = 207 , 100, 50, 50, 36
+	model = nn.Sequential(nn.Linear(nIn, nH1),
 						  nn.Sigmoid(),
+						  nn.Linear(nH1, nH2),
+						  nn.Sigmoid(),
+						  nn.Linear(nH2, nH3),
+						  nn.ReLU(),
 						  nn.Linear(nH3,nOut),
 						  nn.ReLU())
 	model[0]
@@ -883,9 +880,21 @@ def gameLoop():
 					else:
 						nnBlockMat[i*10+j] = 1
 		if (mainBoard.gameStatus != 'gameOver'):
-			currentPieceMat = torch.zeros((np.size(mainBoard.blockMat)))
-			for i in range (0,len(mainBoard.piece.blocks)):
-				currentPieceMat[(mainBoard.piece.blocks[i].currentPos.col)+(mainBoard.piece.blocks[i].currentPos.row)*10] = 1
+			currentPieceMat = torch.zeros(7)
+			if mainBoard.piece.type == 'L':
+				currentPieceMat[0] = 1
+			if mainBoard.piece.type == 'J':
+				currentPieceMat[1] = 1
+			if mainBoard.piece.type == 'S':
+				currentPieceMat[2] = 1
+			if mainBoard.piece.type == 'Z':
+				currentPieceMat[3] = 1
+			if mainBoard.piece.type == 'I':
+				currentPieceMat[4] = 1
+			if mainBoard.piece.type == 'O':
+				currentPieceMat[5] = 1
+			if mainBoard.piece.type == 'T':
+				currentPieceMat[6] = 1
 			nnFullMat = torch.cat((currentPieceMat,nnBlockMat))
 			yPredraw = model(nnFullMat)
 
@@ -899,6 +908,7 @@ def gameLoop():
 		if simming == True and mainBoard.gameStatus == 'running' and mainBoard.piece.status == 'moving' : #If currently simming
 			if firstSim == True:
 				mainBoardCopy = copy.deepcopy(mainBoard)
+				mainBoardUpdated = copy.deepcopy(mainBoard)
 				pieceNeedsRotate = False
 				leftmost = 100
 				rightmost = -100
@@ -911,8 +921,12 @@ def gameLoop():
 					if (bottomMost < mainBoard.piece.blocks[i].currentPos.row):
 						bottomMost = mainBoard.piece.blocks[i].currentPos.row
 				maxLeft, maxRight, maxBottom = leftmost, 9 - rightmost, bottomMost
-				totalMoves = maxLeft + maxRight + 1
-				nncolIndex = 5 - maxLeft
+				if maxBottom > 6:
+					key.restart.trig = True
+					key.restart.status = 'pressed'
+				if maxRight > 5:
+					maxRight = 5
+				nncolIndex = 4 - maxLeft
 				heightArray = []
 				for i in range(0,10):
 					height = 0
@@ -921,13 +935,14 @@ def gameLoop():
 					heightArray.append(int(height-maxBottom))
 				rotation = 0
 				firstSim = False
-			mainBoard = copy.deepcopy(mainBoardCopy)
+			mainBoard = copy.deepcopy(mainBoardUpdated)
 			if(pieceNeedsRotate == True):
+				rotation += 1
 				if firstScore == True:
-					scoreMatrix[rotation*9 + nncolIndex] = mainBoard.lastScore + calculatedScore
+					scoreMatrix[(rotation*9 + nncolIndex)-1] = mainBoard.lastScore + calculatedScore
 				for i in range(0,rotation):
 					mainBoard.piece.rotate('CW')
-				rotation += 1
+				mainBoardUpdated = copy.deepcopy(mainBoard)
 				leftmost = 100
 				rightmost = -100
 				bottomMost = 0
@@ -940,41 +955,66 @@ def gameLoop():
 						bottomMost = mainBoard.piece.blocks[i].currentPos.row
 					maxLeft, maxRight, maxBottom = leftmost, 9-rightmost, bottomMost
 				totalMoves = maxLeft+maxRight+1
+				if maxBottom > 6:
+					key.restart.trig = True
+					key.restart.status = 'pressed'
+				if maxRight > 5:
+					maxRight = 5
 				pieceNeedsRotate = False
-				nncolIndex = 5-maxLeft
+				nncolIndex = 4-maxLeft
+				heightArray = []
+				for i in range(0, 10):
+					height = 0
+					while (mainBoard.blockMat[height][i] == 'empty' and height < 19):
+						height += 1
+					heightArray.append(int(height - maxBottom))
 
 
 			if firstScore == True:
-				scoreMatrix[rotation*9 + nncolIndex] = mainBoard.lastScore + calculatedScore
+				scoreMatrix[(rotation*9 + nncolIndex)-1] = mainBoard.lastScore + calculatedScore
 			if nncolIndex <= 4+maxRight:
 				for i in range(0,4):
-						calculatedScore = heightArray[nncolIndex]
 						mainBoard.piece.blocks[i].currentPos.row += heightArray[nncolIndex]
-						mainBoard.piece.blocks[i].currentPos.col = mainBoard.piece.blocks[i].currentPos.col-(5-nncolIndex)
+						mainBoard.piece.blocks[i].currentPos.col -= 4-nncolIndex
 						firstScore = True
-						if nncolIndex == 9-maxRight:
+						if nncolIndex >= 4+maxRight:
 							pieceNeedsRotate = True
 							if rotation == 3:
 								simming = False
 						pieceConfirmed = False
-				nncolIndex += 1
+				if nncolIndex < 9:
+					nncolIndex += 1
 			else: #Finding the highest scoring move when sim is finished
 				pickedRot = 0
 				pickedShift = 0
 				for i in range (0,4):
 					for j in range(0,9):
-						if(scoreMatrix[pickedRot*9 + pickedShift] <= scoreMatrix[i*9 + j]):
+						if(scoreMatrix[(pickedRot*9 + pickedShift)-1] <= scoreMatrix[i*9 + j]):
 							pickedRot = i
 							pickedShift = j
-				simming = False
-
+			scorebottomMost = 0
+			for i in range(4):
+				if (scorebottomMost < mainBoard.piece.blocks[i].currentPos.row):
+					scorebottomMost = mainBoard.piece.blocks[i].currentPos.row
+			calculatedScore = scorebottomMost
 			while(pieceConfirmed == False):	#Checks if piece is colliding and moves up 1 if it is.
 				pieceConfirmed = True
-				for i in range(0,200):
-					if(nnBlockMat[i] != 0 and currentPieceMat[i] != 0):
-						pieceConfirmed = False
-						for i in range(0,4):
-							mainBoard.piece.blocks[i].currentPos.row -= 1
+				for i in range(0,4):
+					if (0 <= mainBoard.piece.blocks[i].currentPos.row < 20 and 0 <= mainBoard.piece.blocks[
+						i].currentPos.col < 10):
+						if (mainBoard.blockMat[mainBoard.piece.blocks[i].currentPos.row]
+							[mainBoard.piece.blocks[i].currentPos.col] != 'empty'):
+							pieceConfirmed = False
+							for j in range(0,4):
+								mainBoard.piece.blocks[j].currentPos.row -= 1
+							i = 4
+							calculatedScore -= 1
+					else:
+						calculatedScore = 0
+						i = 4
+						break
+			pieceConfirmed = False
+
 
 		if(simming == False and
 				mainBoard.gameStatus == 'running' and
@@ -982,29 +1022,67 @@ def gameLoop():
 			mainBoard = copy.deepcopy(mainBoardCopy)
 			nnRot = math.floor(torch.argmax(yPredraw)/9)
 			nnShift = torch.argmax(yPredraw) % 9
+			nnRotCopy = copy.deepcopy(nnRot)
 			for i in range(0, nnRot):
 				mainBoard.piece.rotate('CW')
+			leftmost = 100
+			rightmost = -100
+			bottomMost = 0
+			for i in range(0, 4):
+				if (leftmost > mainBoard.piece.blocks[i].currentPos.col):
+					leftmost = mainBoard.piece.blocks[i].currentPos.col
+				if (rightmost < mainBoard.piece.blocks[i].currentPos.col):
+					rightmost = mainBoard.piece.blocks[i].currentPos.col
+				if (bottomMost < mainBoard.piece.blocks[i].currentPos.row):
+					bottomMost = mainBoard.piece.blocks[i].currentPos.row
+				maxLeft, maxRight, maxBottom = leftmost, 9 - rightmost, bottomMost
+			if maxBottom > 6:
+				key.restart.trig = True
+				key.restart.status = 'pressed'
+			if maxRight > 5:
+				maxRight = 5
+			while (mainBoard.piece.blocks[0].currentPos.row != 0 and
+				   mainBoard.piece.blocks[1].currentPos.row != 0 and
+				   mainBoard.piece.blocks[2].currentPos.row != 0 and
+				   mainBoard.piece.blocks[3].currentPos.row != 0):
+				for i in range(0, 4):
+					mainBoard.piece.blocks[i].currentPos.row -= 1
 			if (bottomMost < mainBoard.piece.blocks[i].currentPos.row):
 				bottomMost = mainBoard.piece.blocks[i].currentPos.row
 			maxBottom = bottomMost
 			heightArray = []
+			rotation = 0
+			if(nnShift < leftmost):
+				nnShift = leftmost
+			if(nnShift > rightmost):
+				nnShift = rightmost
 			for i in range(0, 10):
 				height = 0
 				while (mainBoard.blockMat[height][i] == 'empty' and height < 19):
 					height += 1
 				heightArray.append(int(height - maxBottom))
-			calculatedScore = heightArray[nnShift]
+
 			for i in range(0,4):
 				mainBoard.piece.blocks[i].currentPos.row += heightArray[nnShift]
-				mainBoard.piece.blocks[i].currentPos.col = mainBoard.piece.blocks[i].currentPos.col - (5-nnShift)
+				mainBoard.piece.blocks[i].currentPos.col -= 5-nnShift
 			while (pieceConfirmed == False):  # Checks if piece is colliding and moves up 1 if it is.
 				pieceConfirmed = True
-				for i in range(0, 200):
-					if (mainBoard.piece.blockMat[i] != 'empty' and mainBoard.blockMat[i] != 'empty'):
-						pieceConfirmed = False
-						for i in range(0, 4):
-							mainBoard.piece.blocks[i].currentPos.row -= 1
+				for i in range(0, 4):
+					if (0 <= mainBoard.piece.blocks[i].currentPos.row < 20 and 0 <= mainBoard.piece.blocks[i].currentPos.col < 10):
+						if (mainBoard.blockMat[mainBoard.piece.blocks[i].currentPos.row][mainBoard.piece.blocks[i].currentPos.col] != 'empty'):
+							pieceConfirmed = False
+							for j in range(0, 4):
+								mainBoard.piece.blocks[j].currentPos.row -= 1
+							i = 4
+					else:
+						i = 4
+						key.enter.status = 'pressed'
+
+			pieceConfirmed = False
+			print(scoreMatrix)
+			print(yPredraw)
 			loss = criterion1(yPredraw, scoreMatrix)
+			print(loss.data)
 			optimiser.zero_grad()
 			with torch.autograd.detect_anomaly():
 				loss.backward(retain_graph=True)
