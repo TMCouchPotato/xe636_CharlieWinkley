@@ -796,9 +796,9 @@ def gameLoop():
 	epoch = 0
 	sqlcon = sqlite3.connect("NNData.db")
 	cur = sqlcon.cursor()
-	res = cur.execute("SELECT name FROM sqlite_master WHERE name='data'")
+	res = cur.execute("SELECT name FROM sqlite_master WHERE name='datawScore'")
 	if (res.fetchone() is None) == True:
-		res = cur.execute("CREATE TABLE data(modelNo, epoch, loss)")
+		res = cur.execute("CREATE TABLE datawScore(modelNo, epoch, loss, score)")
 		sqlcon.commit()
 	# Neural Net Setup
 	nIn, nH1, nH2, nH3, nOut = 207 , 207, 150, 50, 40
@@ -1120,20 +1120,20 @@ def gameLoop():
 			with torch.autograd.detect_anomaly():
 				loss.backward(retain_graph=True)
 			optimiser.step()
-			res = cur.execute("SELECT modelNo FROM data ORDER BY modelNo DESC")
+			res = cur.execute("SELECT modelNo FROM datawScore ORDER BY modelNo DESC")
 			resVar = res.fetchall()
 			root = Tk()
 			if len(resVar) == 0:
-				sqlLoad = (0, epoch, int(loss.data))
-				cur.execute("INSERT INTO data VALUES(?, ?, ?)", sqlLoad)
+				sqlLoad = (0, epoch, int(loss.data), int(mainBoard.score))
+				cur.execute("INSERT INTO datawScore VALUES(?, ?, ?, ?)", sqlLoad)
 				sqlcon.commit()
 			else:
 				if epoch == 0:
 					modelNo = resVar[0][0]+1
 				else:
 					modelNo = resVar[0][0]
-				sqlLoad = (modelNo, epoch, int(loss.data))
-				cur.execute("INSERT INTO data VALUES(?, ?, ?)", sqlLoad)
+				sqlLoad = (modelNo, epoch, int(loss.data), int(mainBoard.score))
+				cur.execute("INSERT INTO datawScore VALUES(?, ?, ?, ?)", sqlLoad)
 				sqlcon.commit()
 			simming = False
 			if epoch == 1000:
@@ -1163,7 +1163,7 @@ def gameLoop():
 						subprocess.Popen([sys.executable, *sys.argv])
 						sys.exit()
 
-			elif epoch == 50000:
+			elif epoch == 40000:
 				dirList = os.listdir(path=os.getcwd())
 				modelList = [s for s in dirList if "NNmodel" in s]
 				if len(modelList) == 0:
