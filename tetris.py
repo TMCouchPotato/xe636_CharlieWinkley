@@ -2,7 +2,10 @@
 #Version: 1.0
 #Date: 26.05.2018
 import time
-
+from tkinter import Tk
+import subprocess
+import os
+import sqlite3
 import pygame #version 1.9.3
 import random
 import math
@@ -767,7 +770,7 @@ class MovingBlock:
 			self.col = col	
 
 # Main game loop		
-def gameLoop():		
+def gameLoop():
 	x = 0
 	blockSize = 20 
 	boardColNum = 10 
@@ -791,6 +794,12 @@ def gameLoop():
 	lrnR = 0.2
 	calculatedScore = 0
 	epoch = 0
+	sqlcon = sqlite3.connect("NNData.db")
+	cur = sqlcon.cursor()
+	res = cur.execute("SELECT name FROM sqlite_master WHERE name='data'")
+	if (res.fetchone() is None) == True:
+		res = cur.execute("CREATE TABLE data(modelNo, epoch, loss)")
+		sqlcon.commit()
 	# Neural Net Setup
 	nIn, nH1, nH2, nH3, nOut = 207 , 207, 150, 50, 40
 	model = nn.Sequential(nn.Linear(nIn, nH1),
@@ -804,7 +813,7 @@ def gameLoop():
 	model[0]
 	criterion1 = torch.nn.MSELoss()
 	criterion2 = torch.nn.CrossEntropyLoss()
-	optimiser = torch.optim.SGD(model.parameters(), lr=lrnR)
+
 
 
 	while not gameExit: #Stay in this loop unless the game is quit
@@ -1104,19 +1113,76 @@ def gameLoop():
 			print(mainBoard.piece.type)
 			print(scoreMatrix)
 			print(yPredraw)
+			optimiser = torch.optim.SGD(model.parameters(), lr=lrnR)
 			loss = criterion1(yPredraw, scoreMatrix)
 			print(loss.data)
 			optimiser.zero_grad()
 			with torch.autograd.detect_anomaly():
 				loss.backward(retain_graph=True)
 			optimiser.step()
+			res = cur.execute("SELECT modelNo FROM data ORDER BY modelNo DESC")
+			resVar = res.fetchall()
+			root = Tk()
+			if len(resVar) == 0:
+				sqlLoad = (0, epoch, int(loss.data))
+				cur.execute("INSERT INTO data VALUES(?, ?, ?)", sqlLoad)
+				sqlcon.commit()
+			else:
+				if epoch == 0:
+					modelNo = resVar[0][0]+1
+				else:
+					modelNo = resVar[0][0]
+				sqlLoad = (modelNo, epoch, int(loss.data))
+				cur.execute("INSERT INTO data VALUES(?, ?, ?)", sqlLoad)
+				sqlcon.commit()
 			simming = False
-			if epoch == 500:
+			if epoch == 1000:
+				lrnR = 0.1
+			elif epoch == 2000:
 				lrnR = 0.05
-			if epoch == 5000:
-				lrnR = 0.01
-			if epoch == 10000:
+			elif epoch == 3200:
 				lrnR = 0.005
+			if epoch == 5000:
+				if(os.getlogin() != "CharlieN"):
+					dirList = os.listdir(path=os.getcwd())
+					modelList = [s for s in dirList if "NNmodel" in s]
+					if len(modelList) == 0:
+						torch.save({'epoch': epoch,
+							'model_state_dict': model.state_dict(),
+							'optimizer_state_dict': optimiser.state_dict(),
+							'loss': loss, 'modelNo': modelNo},
+						   'laptopNNmodel0.pth')
+						subprocess.Popen([sys.executable, *sys.argv])
+						sys.exit()
+					else:
+						torch.save({'epoch': epoch,
+									'model_state_dict': model.state_dict(),
+									'optimizer_state_dict': optimiser.state_dict(),
+									'loss': loss, 'modelNo': modelNo},
+								   'laptopNNmodel'+str(len(modelList))+'.pth')
+						subprocess.Popen([sys.executable, *sys.argv])
+						sys.exit()
+
+			elif epoch == 50000:
+				dirList = os.listdir(path=os.getcwd())
+				modelList = [s for s in dirList if "NNmodel" in s]
+				if len(modelList) == 0:
+					torch.save({'epoch': epoch,
+								'model_state_dict': model.state_dict(),
+								'optimizer_state_dict': optimiser.state_dict(),
+								'loss': loss, 'modelNo': modelNo},
+							   'desktopNNmodel0.pth')
+					subprocess.Popen([sys.executable, *sys.argv])
+					sys.exit()
+				else:
+					torch.save({'epoch': epoch,
+								'model_state_dict': model.state_dict(),
+								'optimizer_state_dict': optimiser.state_dict(),
+								'loss': loss, 'modelNo': modelNo},
+							   'desktopNNmodel' + str(len(modelList)) + '.pth')
+					subprocess.Popen([sys.executable, *sys.argv])
+					sys.exit()
+
 			firstSim = True
 			firstScore = False
 			# if epoch % 25 == 0 or epoch == 0:
